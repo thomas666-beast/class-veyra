@@ -1,50 +1,35 @@
 # Class::Veyra
 
-A pure-Perl compiler for a small class language with explicit interfaces.
+A small class language that compiles to ordinary Perl using Perl's
+native class feature.
 
-Class::Veyra parses and validates Veyra source, then generates ordinary
-Perl using Perl's native class feature. Generated programs do not require
-Class::Veyra at runtime.
+Class::Veyra provides explicit interfaces, functions, actions, constructor
+parameters, inheritance, and file-based imports.
 
-## Quick start
+The compiler is written in pure Perl:
 
-With the distribution installed and `veyra` available on your `PATH`:
+- No source filters.
+- No XS.
+- No non-core dependencies.
+- No Class::Veyra runtime dependency in generated programs.
 
-```sh
-veyra create hello
-cd hello
-veyra run
-```
+> Early-development software. The language and compiler interfaces may
+> change. Compiler validation is not a security boundary.
 
-The untouched starter program prints:
+## Requirements
 
-```text
-Hello, world!
-```
+Perl 5.38 or newer is required for the compiler and generated programs.
 
-No separate build step or manual project configuration is required.
+Perl's native class feature is experimental in Perl 5.38. Generated files
+suppress the corresponding experimental warning.
 
-The usual project commands are:
+The development test suite has been reported passing on Perl 5.40.1.
+Compatibility with every supported Perl release has not been independently
+verified.
 
-```sh
-veyra check
-veyra fmt --check
-veyra fmt
-veyra build
-veyra run
-```
+## Build and test
 
-Pass application arguments after `--`:
-
-```sh
-veyra run -- Alice --verbose
-```
-
-The configured Perl runner receives those values in `@ARGV`.
-
-### From a source checkout
-
-Build and test the distribution first:
+From the distribution root:
 
 ```sh
 perl Makefile.PL
@@ -52,172 +37,308 @@ make
 make test
 ```
 
-To exercise the starter workflow without installing the distribution,
-run these commands from the checkout root:
+Display the build-staged command help:
 
 ```sh
-VEYRA_CHECKOUT="$(pwd)"
-
-perl -I"$VEYRA_CHECKOUT/blib/lib" \
-    "$VEYRA_CHECKOUT/script/veyra" create hello
-
-cd hello
-
-perl -I"$VEYRA_CHECKOUT/blib/lib" \
-    "$VEYRA_CHECKOUT/script/veyra" run
+perl -Mblib blib/script/veyra --help
+perl -Mblib blib/script/veyra-compile --help
 ```
 
-This invokes the source-tree CLI explicitly. It does not verify that
-an installed `veyra` command is discoverable on `PATH`.
+To install the distribution after testing:
 
-## Status
+```sh
+make install
+```
 
-Early development. The implemented language and tools support:
+Installation permissions depend on your Perl environment.
 
-- Qualified class and interface names.
-- Scalar instance fields, including constructor parameters.
-- `fun` operations that return exactly one value.
-- `act` operations that return no values.
-- Required scalar operation parameters.
-- Single inheritance and override validation.
-- Explicit interfaces with operation-kind and arity checks.
-- Multi-source project analysis and compilation.
-- File-based imports through explicit source search directories.
-- Static checks for supported class references and method calls.
-- Static constructor-parameter checks for supported call forms.
-- Project creation, checking, building, and execution.
-- Forwarding application arguments through `veyra run --`.
-- Conservative declaration formatting and formatting checks.
-- Low-level command-line compilation without overwriting existing output.
+## Quick start
 
-The language is restricted; operation bodies are not an unrestricted
-replacement for arbitrary Perl source.
+With the distribution installed:
 
-Static call analysis is deliberately conservative. An unresolved call
-or argument expression is not necessarily rejected, and successful
-analysis is not proof that every runtime call will succeed.
+```sh
+veyra create hello
+cd hello
+veyra run
+```
 
-## Requirements
+Output:
 
-- Perl 5.38 or newer for the compiler and generated programs.
-- No non-core Perl dependencies.
-- No XS or source filters.
+```text
+Hello, world!
+```
 
-The compiler targets Perl's native class feature, which is experimental
-in Perl 5.38.
+The generated project contains:
+
+```text
+hello/
+├── .gitignore
+├── veyra.json
+├── run.pl
+└── src/
+    └── App/
+        └── Main.veyra
+```
+
+Creation refuses an existing destination and does not generate build
+output.
+
+### Run without installing
+
+From the distribution root, after `make`:
+
+```sh
+perl -I blib/lib script/veyra create hello
+cd hello
+perl -I ../blib/lib ../script/veyra run
+```
+
+The remaining examples use the installed `veyra` command. For an
+uninstalled checkout, substitute the appropriate invocation of
+`script/veyra` with the build library on Perl's include path.
+
+## A complete example
+
+This example uses:
+
+- An interface defining a contract.
+- A class with a constructor parameter.
+- A function that returns a greeting.
+- An action that changes object state.
+- Imports connecting multiple source files.
+- An ordinary Perl runner.
+
+Create the starter project:
+
+```sh
+veyra create greetings
+cd greetings
+```
+
+Replace or add the files below.
+
+### Project layout
+
+```text
+greetings/
+├── .gitignore
+├── veyra.json
+├── run.pl
+└── src/
+    └── App/
+        ├── Named.veyra
+        ├── Greeter.veyra
+        └── Main.veyra
+```
+
+### `veyra.json`
+
+```json
+{
+  "entry": "App::Main",
+  "include_paths": ["src"],
+  "output": "build/Main.pm",
+  "run": "run.pl"
+}
+```
+
+### `src/App/Named.veyra`
+
+```text
+interface App::Named {
+    fun name;
+    act rename ($new_name);
+}
+```
+
+The interface requires a zero-argument function named `name` and a
+one-argument action named `rename`.
+
+### `src/App/Greeter.veyra`
+
+```text
+import App::Named;
+
+class App::Greeter implements App::Named {
+    field $name :param;
+
+    fun name {
+        return $name;
+    }
+
+    fun greeting ($prefix) {
+        return "$prefix, $name!";
+    }
+
+    act rename ($new_name) {
+        $name = $new_name;
+    }
+}
+```
+
+The `:param` field is supplied by the constructor.
+
+The `greeting` function returns one value. The `rename` action changes
+the field without returning a value.
+
+### `src/App/Main.veyra`
+
+```text
+import App::Greeter;
+
+class App::Main {
+    fun message {
+        my $greeter = App::Greeter->new(name => "Alice");
+
+        my $first = $greeter->greeting("Hello");
+
+        $greeter->rename("Bob");
+
+        return $first . "\n" . $greeter->greeting("Welcome");
+    }
+}
+```
+
+### `run.pl`
+
+```perl
+use v5.38;
+use strict;
+use warnings;
+
+use FindBin qw($Bin);
+
+require "$Bin/build/Main.pm";
+
+my $app = App::Main->new();
+
+print $app->message(), "\n";
+```
+
+The runner is ordinary Perl. It loads the generated bundle, constructs the
+application object, and prints its result.
+
+It does not load Class::Veyra.
+
+### Check, format, and run
+
+```sh
+veyra check
+veyra fmt
+veyra fmt --check
+veyra run
+```
+
+Application output:
+
+```text
+Hello, Alice!
+Welcome, Bob!
+```
+
+The compiler follows imports from `App::Main`, collects the required
+sources, and generates the configured Perl bundle.
+
+You can also build and execute separately:
+
+```sh
+veyra build
+perl run.pl
+```
 
 ## Project commands
 
-Project commands find `veyra.json` in the current directory or a parent
-directory. Configured paths are resolved relative to that configuration
-file, not the directory from which the command was invoked.
+Project commands discover `veyra.json` in the current directory or a
+parent directory.
 
-### Create a project
+Configured relative paths are resolved from the directory containing
+that file.
+
+### Create
 
 ```sh
 veyra create hello
 ```
 
-The starter layout is:
+Creates a starter project.
 
-```text
-hello/
-    .gitignore
-    veyra.json
-    run.pl
-    src/
-        App/
-            Main.veyra
-```
+An existing destination is refused.
 
-Creation refuses an existing destination. It does not create build
-output.
-
-### Check a project
+### Check
 
 ```sh
 veyra check
 ```
 
-Checks the entry module and its transitive imports, including validation
-of the generated Perl syntax. It does not write the configured build
-output or execute the runner.
+Validates the configured entry module and its transitive imports,
+including generated Perl syntax validation.
 
-### Build a project
+Checking does not write the configured build output or execute the
+runner.
+
+### Build
 
 ```sh
 veyra build
 ```
 
-Compiles the entry module and its transitive imports to the configured
-output path.
+Compiles the collected project to its configured output path.
 
-The project builder creates the output directory when needed and
-replaces an existing generated output file. Compilation and generated
-Perl syntax validation finish before replacement, so those validation
-failures leave the previous output unchanged.
+The builder creates the output directory when needed and can replace an
+existing generated output file.
 
-This differs from the low-level `veyra-compile` command, which refuses
-to overwrite an existing output file.
+Compilation and generated Perl syntax validation finish before
+replacement. Those validation failures leave the previous output
+unchanged.
 
-### Run a project
+### Run
 
 ```sh
 veyra run
 ```
 
-Builds the project, then executes the configured Perl runner from the
+Builds the project, then executes its configured Perl runner from the
 project root.
 
-A failed build prevents the runner from starting. The command does not
-fall back to executing an older generated bundle.
+A failed build prevents execution. An older generated bundle is not used
+as a fallback.
 
-Application arguments require an explicit separator:
+Forward application arguments after `--`:
 
 ```sh
 veyra run -- Alice --verbose
 ```
 
-Everything after the first separator is forwarded unchanged as runner
-arguments. For example:
+Arguments are passed to the runner's `@ARGV`, not automatically to a Veyra
+operation.
+
+To pass an option to the application:
 
 ```sh
 veyra run -- --help
 ```
 
-passes `--help` to the application. In contrast:
+The runner decides how to interpret those arguments.
 
-```sh
-veyra run --help
-```
-
-is a CLI usage error.
-
-Both `veyra run` and `veyra run --` run the application without arguments.
-The application exit code is returned by the CLI.
-
-The runner decides how to use `@ARGV`; arguments are not automatically
-passed to a Veyra operation.
-
-### Format a project
+### Format
 
 ```sh
 veyra fmt
 ```
 
-Formats the configured entry module and its transitive imports.
+Formats the entry module and its transitive imports.
 
 The formatter:
 
 - Normalizes declaration spacing and structural indentation.
 - Adjusts indentation on existing operation-body lines.
-- Indents nested blocks, parentheses, and brackets.
+- Uses nested braces, parentheses, and brackets to determine indentation.
 - Preserves string contents, including multiline-string whitespace.
-- Preserves comment text and order while adjusting comment indentation.
+- Preserves comment text and order while allowing indentation changes.
 - Leaves inline operation bodies inline.
-- Does not visit unrelated `.veyra` files outside the entry import graph.
+- Does not visit unrelated sources outside the entry import graph.
 - Refuses imported sources resolved outside the project root.
-- Does not generate build output or execute the runner.
+- Does not build the project or execute its runner.
 
 For example:
 
@@ -239,36 +360,21 @@ class App::Main {
 }
 ```
 
-An unused external include directory is allowed. Importing a source
-from outside the project root causes formatting to fail rather than
-modifying that dependency.
+An unused external include directory is allowed. The restriction applies
+to imported source files, not merely to configured directory names.
 
-Outside operation bodies, formatting normalizes structural line breaks
-to LF. Within operation bodies, existing line endings are retained
-while leading indentation is adjusted.
+Outside operation bodies, structural line breaks are normalized to LF.
+Within operation bodies, existing line endings are retained while
+leading indentation is adjusted.
 
-Before writing, the formatter analyzes both the original and proposed
-sources. Their generated Perl must have matching token types and
-contents after whitespace tokens are excluded. This comparison includes
-string and comment contents; it is a safeguard, not a general proof of
-semantic equivalence.
-
-Changed files are staged before replacements begin. Replacements happen
-one file at a time, not as a multi-file transaction: a filesystem error
-during replacement may leave an earlier file formatted and a later file
-unchanged.
-
-The formatter preserves ordinary source permission bits. It does not
-promise to preserve every filesystem attribute.
-
-### Check formatting without writing
+### Check formatting
 
 ```sh
 veyra fmt --check
 ```
 
-Reports files that would change and prints a unified diff showing the
-original and proposed lines. It does not replace source files.
+Reports files needing formatting and prints a unified diff without
+replacing source files.
 
 For example:
 
@@ -276,61 +382,55 @@ For example:
 Would format src/App/Main.veyra.
 --- a/src/App/Main.veyra
 +++ b/src/App/Main.veyra
-@@ -1,5 +1,5 @@
- class App::Main {
--act message {
--say "Hello";
--}
-+    act message {
-+        say "Hello";
-+    }
+@@ -4,6 +4,6 @@
+     }
+ 
+     act say_name ($name) {
+-say 'Hello ' . $name;
++        say 'Hello ' . $name;
+     }
  }
 ```
 
-Lines beginning with `-` show original contents. Lines beginning with
-`+` show proposed contents. The formatter currently produces one hunk
-per changed file, with surrounding context.
+Lines beginning with `-` show original contents. Lines beginning with `+`
+show proposed contents.
 
-Exit status is:
+Check mode returns status `1` when changes are needed.
 
-- `0`: the collected sources are already formatted.
-- `1`: formatting changes are needed, or formatting failed.
-- `2`: invalid command-line usage.
-
-Formatting differences and diffs are reported on standard output.
-Errors are reported on standard error.
-
-To apply the changes and then verify the result:
+Apply the changes and verify them:
 
 ```sh
 veyra fmt
 veyra fmt --check
 ```
 
-The second command should report:
+Once formatting is clean:
 
 ```text
 All source files are formatted.
 ```
 
-and return status `0`.
+The check then returns status `0`.
 
-### Project command exit codes
+Formatting differences are written to standard output. Errors are written
+to standard error.
 
-For `create`, `check`, `build`, and `fmt`:
+### Version and help
 
-- `0`: success.
-- `1`: a project, validation, or filesystem error; also formatting
-  differences for `fmt --check`.
-- `2`: invalid command-line usage.
+```sh
+veyra --version
+veyra version
 
-For `run`, CLI usage errors return `2`, and project or build failures
-return `1`. Once the runner executes, its exit status is propagated.
-A runner terminated by a signal is reported as `128 + signal number`.
+veyra --help
+veyra help
+veyra -h
+```
+
+These commands do not require a project.
 
 ## Project configuration
 
-The generated `veyra.json` contains:
+A typical `veyra.json` is:
 
 ```json
 {
@@ -341,42 +441,120 @@ The generated `veyra.json` contains:
 }
 ```
 
-The fields are:
+| Key | Meaning |
+| --- | --- |
+| `entry` | Logical entry module name. |
+| `include_paths` | Non-empty array of source search directories, searched in order. |
+| `output` | Generated Perl bundle path. |
+| `run` | Ordinary Perl runner used by `veyra run`. |
 
-- `entry`: the logical class or interface name used as the entry module.
-- `include_paths`: a non-empty array of source search directories.
-- `output`: the generated Perl bundle path.
-- `run`: the Perl runner path, required by `veyra run`.
+Relative paths are resolved from the configuration directory.
 
-Search directories are tried in the configured order. Paths may be
-relative to the project root or absolute.
+Changing `output` does not rewrite the runner. If you customize the output
+path, update the runner to load the corresponding generated bundle.
 
-The generated `run.pl` is ordinary Perl. If you customize the output
-path or application entry behavior, update the runner accordingly.
-Building a bundle does not rewrite the runner.
+## Language overview
 
-## Example language project
-
-The following example demonstrates interfaces, constructor fields,
-imports, and inheritance independently of the generated starter project.
-
-Create these three source files.
-
-### `src/MyApp/Contracts/Named.veyra`
+### Fields and constructor parameters
 
 ```text
-interface MyApp::Contracts::Named {
+class Person {
+    field $name :param;
+
+    fun name {
+        return $name;
+    }
+}
+```
+
+Construct the object from Perl or a supported Veyra operation body:
+
+```perl
+my $person = Person->new(name => "Alice");
+```
+
+Fields belong to individual object instances.
+
+A field marked `:param` is a constructor parameter. A field without that
+attribute is not a constructor parameter.
+
+Fields are not automatically exposed as public accessors.
+
+### Functions
+
+A `fun` explicitly returns one value:
+
+```text
+fun greeting ($prefix) {
+    return "$prefix, $name";
+}
+```
+
+That value may be `undef` or a reference.
+
+Explicit empty-list and comma-separated return lists are rejected:
+
+```perl
+return ();
+return (1, 2);
+```
+
+Generated function bodies run in scalar context. Structural validation
+does not infer the behavior of every arbitrary Perl expression.
+
+### Actions
+
+An `act` returns no values:
+
+```text
+act rename ($new_name) {
+    $name = $new_name;
+}
+```
+
+A bare `return;` can end an action early. An explicit `return ();` is also
+allowed.
+
+Returning a value is rejected.
+
+An action returns an empty list in list context and `undef` in scalar
+context. Its final expression is discarded.
+
+### Arguments
+
+Operation signatures declare required positional scalar parameters:
+
+```text
+fun greeting ($prefix) {
+    return "$prefix, $name";
+}
+```
+
+Generated method signatures reject missing and extra arguments.
+Passing `undef` still supplies an argument.
+
+An omitted signature and an explicit empty signature both declare zero
+arguments at runtime.
+
+The static method-call checker currently skips argument-count enforcement
+for declarations with omitted signatures. That checker limitation does
+not make their runtime signatures variadic.
+
+Default and optional arguments are not supported.
+
+### Interfaces
+
+```text
+interface Named {
     fun name;
     act rename ($new_name);
 }
 ```
 
-### `src/MyApp/Person.veyra`
+A class explicitly declares implementation:
 
 ```text
-import MyApp::Contracts::Named;
-
-class MyApp::Person implements MyApp::Contracts::Named {
+class Person implements Named {
     field $name :param;
 
     fun name {
@@ -386,202 +564,153 @@ class MyApp::Person implements MyApp::Contracts::Named {
     act rename ($new_name) {
         $name = $new_name;
     }
+}
+```
 
-    fun description {
-        return "person";
+The compiler checks operation names, operation kinds, and argument counts.
+
+It does not check argument or return types.
+
+Interfaces are compile-time contracts, not generated runtime classes.
+Implementing `Named` does not make `$object->isa("Named")` true.
+
+### Inheritance
+
+A class may extend one parent:
+
+```text
+class Employee extends Person {
+    field $title :param;
+
+    fun title {
+        return $title;
     }
 }
 ```
 
-### `src/MyApp/Employee.veyra`
+Parents are emitted before children, regardless of declaration order.
+
+Inherited operations may satisfy interfaces. Subclasses inherit their
+parent's interface obligations, and overrides must preserve operation
+kind and argument count.
+
+Parent fields remain private to the parent class. Child operations should
+use inherited operations instead of directly naming parent fields.
+
+The operation name `new` is reserved by the generator.
+
+### Imports
 
 ```text
-import MyApp::Person;
-
-class MyApp::Employee extends MyApp::Person {
-    fun description {
-        return "employee";
-    }
-}
+import App::Greeter;
 ```
 
-`Employee` inherits its constructor field and the `name` and `rename`
-operations. Its `description` operation overrides the parent's operation.
-
-Interfaces describe required operations. They do not become runtime
-parent classes.
-
-## Static call checking
-
-The compiler checks supported calls when it can identify their targets
-and determine the relevant arguments.
-
-### Method arguments
-
-For an explicitly signed operation:
+The logical name maps to:
 
 ```text
-act rename ($new_name) {
-    $name = $new_name;
-}
+App/Greeter.veyra
 ```
 
-a supported call with zero or two countable arguments is rejected.
+beneath a configured source search directory.
 
-An explicit empty signature declares zero parameters:
+The requested file must declare the requested class or interface.
+Additional declarations are allowed.
+
+Module compilation follows transitive imports and collects each canonical
+source path once.
+
+Circular imports are allowed; circular inheritance is rejected.
+
+Qualified names must be contiguous:
 
 ```text
-act reset () {
-}
+App::Greeter
 ```
 
-The argument-count checker currently limits itself to explicit
-signatures and supported parenthesized calls. It does not impose a count
-on an operation whose Veyra declaration omits a signature.
-
-That checker limitation does not define unrestricted runtime arity.
-Generated Perl still determines runtime behavior.
-
-Expressions whose argument-list size cannot be established are left
-unresolved rather than assigned a guessed count.
-
-### Constructor parameters
-
-A parameter field declares a required named constructor argument:
+not:
 
 ```text
-field $name :param;
+App :: Greeter
 ```
 
-For supported statically readable calls, the compiler checks:
+Imports do not create short-name aliases.
 
-- Unknown constructor parameter names.
-- Missing required parameters.
-- Required parameters inherited from parent classes.
+## Low-level compiler CLI
 
-Fields without `:param` are not constructor parameters.
+The original `veyra-compile` interface remains available independently of
+the project CLI.
 
-The current field syntax does not support parameter defaults or
-parameter-name aliases.
+### Compile one file
 
-Parenthesized named argument lists are checked when their shape can be
-determined. A bare constructor followed by a semicolon or the end of an
-operation body is also checked as a zero-argument call.
-
-Dynamic lists such as `new(%parameters)` and unresolved unparenthesized
-argument lists are not assigned guessed parameter names or counts.
-
-## Low-level command-line compilation
-
-The `veyra-compile` command remains available independently of the
-project CLI.
-
-From a built source checkout:
+From the distribution root:
 
 ```sh
-mkdir -p build
-perl -Mblib script/veyra-compile --module MyApp::Employee -I src --output build/Employee.pm
+perl -Mblib blib/script/veyra-compile \
+    --output person.generated.pm \
+    examples/person.veyra
 ```
 
-After installation, the equivalent command is:
+Successful compilation is silent.
+
+The output path is required, its parent directory must already exist,
+and an existing output file is never overwritten.
+
+Compilation does not execute the generated file.
+
+Single-file compilation does not perform filesystem import resolution.
+
+### Compile a module and its imports
+
+With the distribution installed:
 
 ```sh
-veyra-compile --module MyApp::Employee -I src --output build/Employee.pm
+veyra-compile --module MyApp::Employee \
+    -I src \
+    -I vendor \
+    --output build/Employee.pm
 ```
 
-Module mode follows transitive imports and validates the collected
-project before generating output.
+Module mode follows transitive imports using the supplied search
+directories, in order.
 
-Repeat `-I` or `--include` to search multiple directories:
+The output directory must already exist.
+
+Unlike `veyra build`, `veyra-compile` does not replace an existing output
+file.
+
+### Run the standalone example
+
+After compiling `examples/person.veyra`:
 
 ```sh
-veyra-compile --module MyApp::Employee -I src -I vendor --output build/Employee.pm
+perl -e '
+    use strict;
+    use warnings;
+
+    require "./person.generated.pm";
+
+    my $person = Person->new(name => "Alice");
+
+    print $person->greeting("Hello"), "\n";
+
+    $person->rename("Bob");
+
+    print $person->name, "\n";
+'
 ```
 
-Directories are searched in the order provided. The output directory
-must already exist, and existing output files are never overwritten.
-
-### Single-file mode
-
-The original file-compilation mode remains available:
-
-```sh
-veyra-compile --output build/Single.pm Single.veyra
-```
-
-Single-file mode does not follow imports. Use module mode for
-filesystem import resolution.
-
-Put options before the positional input filename. Module mode takes
-no positional input and requires at least one include directory.
-Include options are not accepted in single-file mode.
-
-Low-level CLI exit codes:
-
-- `0`: successful compilation or help.
-- `1`: compilation or filesystem failure.
-- `2`: invalid command-line usage.
-
-## Use the generated classes
-
-Once the example language project is compiled:
-
-```perl
-use v5.38;
-use strict;
-use warnings;
-
-require './build/Employee.pm';
-
-my $employee = MyApp::Employee->new(name => 'Alice');
-
-print $employee->name, "\n";
-print $employee->description, "\n";
-
-$employee->rename('Bob');
-
-print $employee->name, "\n";
-```
-
-The generated bundle contains the collected classes in parent-first
-order. It does not load the original `.veyra` files at runtime.
-
-## Import rules
-
-An import names a declaration and maps that name to a source file:
+Expected output:
 
 ```text
-import MyApp::Person;
+Hello, Alice
+Bob
 ```
 
-With `src` as a search directory, this requests:
-
-```text
-src/MyApp/Person.veyra
-```
-
-The loaded file must declare `MyApp::Person` as a class or interface.
-It may contain additional declarations.
-
-Other rules:
-
-- Qualified names must be contiguous: `MyApp::Person`, not
-  `MyApp :: Person`.
-- Imports are allowed between top-level declarations.
-- Each import requires its own semicolon-terminated statement.
-- Duplicate imports within one source are rejected.
-- Each canonical source path is collected once per collection.
-- Circular imports are allowed; circular inheritance is rejected.
-- The logical entry module must also declare its requested name.
-- Imports do not introduce short-name aliases. Use the declared names
-  in `extends` and `implements`.
-- Source lookup uses explicit include directories, not Perl's `@INC`.
-
-A source file is not a filesystem sandbox: configured directories may
-contain symlinks. The project formatter additionally checks whether
-resolved source paths are inside the project root.
+This runtime command does not load Class::Veyra.
 
 ## Compiler API
+
+Analyze a module and its transitive imports:
 
 ```perl
 use Class::Veyra::Compiler;
@@ -590,62 +719,28 @@ my $project = Class::Veyra::Compiler->analyze_module(
     'MyApp::Employee',
     include_paths => ['src', 'vendor'],
 );
+```
 
+Compile to a Perl source string:
+
+```perl
 my $perl = Class::Veyra::Compiler->compile_module(
     'MyApp::Employee',
     include_paths => ['src', 'vendor'],
 );
 ```
 
-`analyze_module` collects imports and returns a validated project AST.
+These module APIs require an `include_paths` array reference containing at
+least one search directory.
 
-`compile_module` performs the same collection and validation, then
-returns generated Perl as a string. It does not execute that Perl or
+Source lookup does not use Perl's `@INC`.
+
+`compile_module` returns generated Perl. It does not execute that Perl or
 write an output file.
-
-Other compiler entry points:
-
-- `analyze($source, $source_name)` analyzes one supplied source string.
-- `compile($source, $source_name)` compiles one supplied source string.
-- `analyze_sources($sources)` analyzes supplied named source strings.
-- `compile_sources($sources)` compiles supplied named source strings.
-- `compile_file($input_path, $output_path)` compiles one input file
-  without overwriting an existing output file.
-
-The source name is optional for the single-string APIs and defaults
-to `<string>`.
-
-For the multi-source APIs, supply an array reference:
-
-```perl
-my $sources = [
-    {
-        source_name => 'example.veyra',
-        source      => 'class Example {}',
-    },
-];
-
-my $perl = Class::Veyra::Compiler->compile_sources($sources);
-```
-
-The string and supplied-source APIs do not perform filesystem import
-resolution. Use the module APIs when imports should discover files.
-
-To write a compiled module project directly to a new file:
-
-```perl
-use Class::Veyra::FileCompiler;
-
-Class::Veyra::FileCompiler->compile_module_file(
-    'MyApp::Employee',
-    'build/Employee.pm',
-    include_paths => ['src', 'vendor'],
-);
-```
 
 ## Formatter API
 
-Format a supplied source string without writing files:
+Format a source string without writing files:
 
 ```perl
 use Class::Veyra::Formatter;
@@ -656,11 +751,7 @@ my $formatted = Class::Veyra::Formatter->format(
 );
 ```
 
-The optional source name defaults to `<string>`.
-
-The formatter parses both its input and output. It adjusts declaration
-spacing and operation-body indentation while preserving non-whitespace
-token types and contents, including strings and comments.
+The source name is optional and defaults to `<string>`.
 
 For project-level formatting:
 
@@ -676,36 +767,143 @@ my $would_change = $project->format(
 my $changed = $project->format;
 ```
 
-Both calls return an array reference of project-relative paths in sorted
-order. Check mode does not write files.
+Both calls return an array reference containing sorted project-relative
+paths. Check mode does not replace source files.
 
-## Native-Perl convenience import
+The API does not automatically print CLI messages or diffs.
 
-`use Class::Veyra;` enables strictness, warnings, and Perl's native
-class feature in the importing lexical scope. It also suppresses the
+An `on_change` callback can inspect proposed changes:
+
+```perl
+my $would_change = $project->format(
+    check_only => 1,
+
+    on_change => sub {
+        my ($path, $original, $formatted) = @_;
+
+        print "Would format $path\n";
+    },
+);
+```
+
+Callbacks receive the project-relative path, original source, and
+formatted source. They run after project validation and before source
+replacement.
+
+## Native Perl convenience import
+
+The distribution also provides a convenience import for ordinary Perl:
+
+```perl
+use v5.38;
+use Class::Veyra;
+
+class Person {
+    field $name :param;
+
+    method name {
+        return $name;
+    }
+}
+
+my $person = Person->new(name => "Alice");
+
+print $person->name, "\n";
+```
+
+`use Class::Veyra` enables strictness, warnings, and Perl's native class
+feature in the importing lexical scope. It suppresses the
 `experimental::class` warning in that scope.
 
-It does not teach the Perl parser the Veyra `fun`, `act`, `interface`,
-or source-level `import` syntax. Compile Veyra source through
-`Class::Veyra::Compiler` or the CLI.
+It does not enable Veyra's `fun`, `act`, `interface`, or source-level
+`import` syntax in ordinary Perl files.
 
-## Safety
+Use the compiler API or CLI to compile Veyra source.
+
+Load the module without its convenience import when needed:
+
+```perl
+use Class::Veyra ();
+```
+
+## Exit status
+
+### Project CLI
+
+| Status | Meaning |
+| --- | --- |
+| `0` | Successful command, help, or version reporting. |
+| `1` | Project, validation, or filesystem failure. |
+| `2` | Invalid command-line usage. |
+
+Exceptions and qualifications:
+
+- `veyra fmt --check` also returns `1` when formatting changes are needed.
+- `veyra run` propagates the runner's exit status.
+- Runner signal termination is reported as `128 + signal number`.
+
+### Low-level compiler
+
+| Status | Meaning |
+| --- | --- |
+| `0` | Successful compilation or help. |
+| `1` | Compilation or filesystem failure. |
+| `2` | Invalid command-line usage. |
+
+## Limitations and safety
+
+### Restricted operation bodies
+
+Operation bodies support a restricted subset of Perl syntax.
+
+The syntax guard rejects constructs including quote-like and
+regular-expression operators, slash syntax, backticks, heredoc syntax,
+nested sub declarations, and eval.
+
+Generated operation bodies use an anonymous-subroutine wrapper to
+implement return behavior. Caller inspection and similar introspection
+are not promised to behave as if the body were written directly inside
+a native method.
+
+Static call checking is conservative. Dynamic or unresolved argument
+lists are not assigned guessed argument counts.
+
+### Not a sandbox
 
 Compiler validation is not a security boundary.
 
-The compiler APIs parse, validate, and generate code without running
-the application. Project commands additionally syntax-check generated
-Perl, and `veyra run` deliberately executes the configured runner after
-a successful build.
+Do not compile, syntax-check, load, or execute untrusted source as though
+it were isolated.
 
-Do not treat generated Perl, Perl syntax checking, `eval`, or loading a
-generated bundle as safe for untrusted source.
+Generated Perl and configured runners are executable code.
 
-The formatter's project-root checks and generated-output comparison
-are safeguards against unintended edits, not an isolation mechanism
-for hostile projects.
+### Formatter safeguards
 
-## Build and test
+Before writing, project formatting analyzes both original and proposed
+sources. Their generated Perl must have matching token types and contents
+after whitespace tokens are excluded.
+
+String and comment contents are included in that comparison.
+
+This is a safeguard against unintended changes, not a general proof of
+semantic equivalence.
+
+Changed files are staged before replacement begins. Replacements happen
+one file at a time, not as a multi-file transaction. A filesystem error
+during replacement may leave earlier files formatted and later files
+unchanged.
+
+Ordinary source permission bits are preserved. Preservation of every
+filesystem attribute is not promised.
+
+### Low-level output publication
+
+Low-level file compilation is not atomic publication. Another process
+could observe an output file while it is being written.
+
+## Development checks
+
+Run the complete test suite:
 
 ```sh
 perl Makefile.PL
@@ -713,36 +911,14 @@ make
 make test
 ```
 
-## Installation
-
-After building and testing, install using the destinations configured
-for your Perl and MakeMaker setup:
+Run the project formatter and diff tests specifically:
 
 ```sh
-make install
+prove -blv \
+    t/53-formatter.t \
+    t/54-project-format.t \
+    t/58-source-diff.t
 ```
 
-The distribution declares both `veyra` and `veyra-compile` as executable
-scripts. The installation's executable directory must be on `PATH`,
-and its module directory must be visible to the Perl interpreter used
-by those scripts.
-
-Source-tree tests and an installed-command smoke test are separate
-checks. To verify an installation, run the quick-start workflow from a
-directory outside the source checkout.
-
-## Distribution checks
-
-After adding or removing distribution files, regenerate and review
-`MANIFEST`:
-
-```sh
-make manifest
-```
-
-Check distribution contents and run the tests in a distribution copy:
-
-```sh
-make distcheck
-make disttest
-```
+Before committing, review changes to source files, generated output, and
+documentation separately.
