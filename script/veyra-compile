@@ -1,0 +1,153 @@
+#!/usr/bin/env perl
+
+use v5.38;
+use strict;
+use warnings;
+
+use Fcntl qw(O_WRONLY O_CREAT O_EXCL);
+use Getopt::Long qw(GetOptionsFromArray);
+
+use Class::Veyra::Compiler;
+
+sub usage {
+    return <<'USAGE';
+Usage:
+  veyra-compile --output FILE INPUT
+  veyra-compile --module NAME -I DIR [ -I DIR ... ] --output FILE
+  veyra-compile --help
+
+Options:
+  --module NAME       Compile a module and its transitive imports.
+  -I, --include DIR   Add a source directory; may be repeated.
+  -o, --output FILE   Write generated Perl to FILE.
+  -h, --help          Show this help.
+
+Existing output files are not overwritten.
+USAGE
+}
+
+sub write_output {
+    my ($path, $generated) = @_;
+
+    die "Cannot write '$path': existing files are not overwritten\n"
+        if -e $path || -l $path;
+
+    sysopen my $handle,
+        $path,
+        O_WRONLY | O_CREAT | O_EXCL,
+        0666
+        or die "Cannot create output file '$path': $!\n";
+
+    binmode $handle, ':raw'
+        or die "Cannot set output file mode '$path': $!\n";
+
+    print {$handle} $generated
+        or die "Cannot write output file '$path': $!\n";
+
+    close $handle
+        or die "Cannot close output file '$path': $!\n";
+
+    return;
+}
+
+sub main {
+    my (@arguments) = @_;
+
+    my $module;
+    my @include_paths;
+    my $output;
+    my $help;
+
+    Getopt::Long::Configure(
+        'default',
+        'no_auto_abbrev',
+        'no_ignore_case',
+        'permute',
+    );
+
+    my $parsed = GetOptionsFromArray(
+        \@arguments,
+        'module=s'    => \$module,
+        'include|I=s@' => \@include_paths,
+        'output|o=s'  => \$output,
+        'help|h'      => \$help,
+    );
+
+    unless ($parsed) {
+        print STDERR usage();
+        return 2;
+    }
+
+    if ($help) {
+        print STDOUT usage();
+        return 0;
+    }
+
+    unless (defined $output && length $output) {
+        print STDERR usage();
+        return 2;
+    }
+
+    if (defined $module) {
+        unless (
+            length $module
+            && @include_paths
+            && !@arguments
+            && !grep { !length $_ } @include_paths
+        ) {
+            print STDERR usage();
+            return 2;
+        }
+    }
+    else {
+        unless (
+            @arguments == 1
+            && length $arguments[0]
+            && !@include_paths
+        ) {
+            print STDERR usage();
+            return 2;
+        }
+    }
+
+    my $completed = eval {
+        die "Cannot write '$output': existing files are not overwritten\n"
+            if -e $output || -l $output;
+
+        if (defined $module) {
+            my $generated =
+                Class::Veyra::Compiler->compile_module(
+                    $module,
+                    include_paths => \@include_paths,
+                );
+
+            write_output($output, $generated);
+        }
+        else {
+            Class::Veyra::Compiler->compile_file(
+                $arguments[0],
+                $output,
+            );
+        }
+
+        1;
+    };
+
+    unless ($completed) {
+        my $error = $@;
+
+        $error = "Unknown compilation error\n"
+            unless length $error;
+
+        $error .= "\n"
+            unless $error =~ /\n\z/;
+
+        print STDERR "veyra-compile: $error";
+
+        return 1;
+    }
+
+    return 0;
+}
+
+exit main(@ARGV);

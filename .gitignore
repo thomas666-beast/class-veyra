@@ -1,0 +1,38 @@
+# Perl build output
+/blib/
+/Makefile
+/Makefile.old
+/pm_to_blib
+/MYMETA.json
+/MYMETA.yml
+/ Class-Veyra-*.tar.gz
+/Class-Veyra-*/
+
+# Generated Perl and project build output
+/build/
+*.generated.pm
+
+# Formatter staging files
+.veyra-fmt-*
+
+# Test coverage and profiling
+/cover_db/
+/nytprof/
+/nytprof.out
+/nytprof.out.*
+
+# Local development projects
+/hello/
+
+# Editor and temporary files
+*~
+*.swp
+*.swo
+.#*
+\#*#
+.vscode/
+.idea/
+
+# Operating-system files
+.DS_Store
+Thumbs.db

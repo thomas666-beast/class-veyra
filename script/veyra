@@ -1,0 +1,218 @@
+#!/usr/bin/env perl
+
+use v5.38;
+use strict;
+use warnings;
+
+use Class::Veyra ();
+use Class::Veyra::Project;
+use Class::Veyra::ProjectCreator;
+use Class::Veyra::ProjectFormatter;
+use Class::Veyra::SourceDiff;
+
+sub usage {
+    return <<'USAGE';
+Usage:
+  veyra create NAME
+  veyra check
+  veyra build
+  veyra run [-- ARG...]
+  veyra fmt [--check]
+  veyra version
+  veyra --version
+  veyra help
+
+Commands:
+  create NAME   Create a new Veyra project.
+  check         Validate the project without generating output.
+  build         Compile the project.
+  run           Build the project, then execute its runner.
+                Arguments after -- are passed to the runner.
+  fmt           Format the entry module and its transitive imports.
+                --check reports changes without writing files.
+  version       Show the Veyra version.
+  help          Show this help.
+
+Project commands find veyra.json in the current directory
+or a parent directory.
+
+fmt --check exits with status 1 if formatting changes are needed.
+USAGE
+}
+
+sub main {
+    my (@arguments) = @_;
+
+    unless (@arguments) {
+        print STDERR usage();
+        return 2;
+    }
+
+    my $command = shift @arguments;
+
+    if (
+        $command eq 'help'
+        || $command eq '--help'
+        || $command eq '-h'
+    ) {
+        if (@arguments) {
+            print STDERR usage();
+            return 2;
+        }
+
+        print STDOUT usage();
+        return 0;
+    }
+
+    if (
+        $command eq 'version'
+        || $command eq '--version'
+    ) {
+        if (@arguments) {
+            print STDERR usage();
+            return 2;
+        }
+
+        print STDOUT "veyra $Class::Veyra::VERSION\n";
+        return 0;
+    }
+
+    my @runner_arguments;
+
+    if (
+        $command eq 'run'
+        && @arguments
+        && $arguments[0] eq '--'
+    ) {
+        shift @arguments;
+
+        @runner_arguments = @arguments;
+        @arguments = ();
+    }
+
+    my $format_check = 0;
+
+    if (
+        $command eq 'fmt'
+        && @arguments == 1
+        && $arguments[0] eq '--check'
+    ) {
+        $format_check = 1;
+        @arguments = ();
+    }
+
+    my $valid = (
+        ($command eq 'create' && @arguments == 1)
+        || (
+            (
+                $command eq 'check'
+                || $command eq 'build'
+                || $command eq 'run'
+                || $command eq 'fmt'
+            )
+            && @arguments == 0
+        )
+    );
+
+    unless ($valid) {
+        print STDERR usage();
+        return 2;
+    }
+
+    my $exit_status = 0;
+
+    my $completed = eval {
+        if ($command eq 'create') {
+            my $name = $arguments[0];
+
+            Class::Veyra::ProjectCreator->create($name);
+
+            print STDOUT "Created project '$name'.\n";
+        }
+        elsif ($command eq 'fmt') {
+            my $project =
+                Class::Veyra::ProjectFormatter->load;
+
+            my %diffs;
+
+            my $changed = $project->format(
+                check_only => $format_check,
+
+                on_change => sub {
+                    my ($path, $original, $formatted) = @_;
+
+                    return unless $format_check;
+
+                    $diffs{$path} =
+                        Class::Veyra::SourceDiff->unified(
+                            $path,
+                            $original,
+                            $formatted,
+                        );
+                },
+            );
+
+            if (@$changed) {
+                my $verb = $format_check
+                    ? 'Would format'
+                    : 'Formatted';
+
+                for my $path (@$changed) {
+                    print STDOUT "$verb $path.\n";
+
+                    if ($format_check) {
+                        print STDOUT $diffs{$path};
+                    }
+                }
+
+                $exit_status = 1
+                    if $format_check;
+            }
+            else {
+                print STDOUT
+                    "All source files are formatted.\n";
+            }
+        }
+        else {
+            my $project = Class::Veyra::Project->load;
+
+            if ($command eq 'check') {
+                $project->check;
+
+                print STDOUT
+                    "Checked " . $project->entry . ".\n";
+            }
+            elsif ($command eq 'build') {
+                $project->build;
+
+                print STDOUT
+                    "Built " . $project->output_label . ".\n";
+            }
+            else {
+                $exit_status = $project->run(
+                    @runner_arguments,
+                );
+            }
+        }
+
+        1;
+    };
+
+    unless ($completed) {
+        my $error = $@;
+
+        $error = "Unknown project error\n"
+            unless length $error;
+
+        $error .= "\n"
+            unless $error =~ /\n\z/;
+
+        print STDERR "veyra: $error";
+
+        return 1;
+    }
+
+    return $exit_status;
+}
+
+exit main(@ARGV);

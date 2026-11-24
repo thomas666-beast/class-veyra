@@ -1,0 +1,4 @@
+#!include_default
+
+# Exclude generated distribution directories and archives.
+^Class-Veyra-[^/]+(?:/|$)
