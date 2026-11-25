@@ -403,6 +403,36 @@ that Perl or write an output file.
 The single-string, supplied-source, and single-file compiler APIs do
 not perform filesystem import resolution.
 
+=head1 PERL MODULES IN VEYRA CLASSES
+
+Use C<use Module::Name ();> to declare a Perl dependency inside a
+class:
+
+    class App::User {
+        use JSON::PP ();
+
+        field $name :param;
+
+        fun as_json {
+            return JSON::PP::encode_json({name => $name});
+        }
+    }
+
+The generator emits the declaration inside the corresponding Perl
+class. Empty parentheses are required and suppress the module's
+import hook. Use fully qualified function calls or external class
+method calls. External signatures are not checked by Veyra.
+
+These declarations are distinct from Veyra C<import>, which resolves
+Veyra sources. A Perl module can be declared in more than one class,
+but not twice in the same class. Import lists and version constraints
+are not supported.
+
+Formatting and Perl generation do not load the declared modules.
+C<veyra check> and C<veyra build> load them during the generated Perl
+syntax check. Loading the generated bundle also loads them, so they
+must be installed in the relevant Perl environments.
+
 =head1 LOW-LEVEL COMPILER CLI
 
 The original C<veyra-compile> executable remains available independently

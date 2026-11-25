@@ -5,7 +5,7 @@
 /pm_to_blib
 /MYMETA.json
 /MYMETA.yml
-/ Class-Veyra-*.tar.gz
+/Class-Veyra-*.tar.gz
 /Class-Veyra-*/
 
 # Generated Perl and project build output

@@ -482,6 +482,33 @@ must not already exist.
 Single-file compilation does not perform filesystem import
 resolution.
 
+## Use a Perl module from a class
+
+Add this class as `src/App/User.veyra`:
+
+```text
+class App::User {
+    use JSON::PP ();
+
+    field $name :param;
+
+    fun as_json {
+        return JSON::PP::encode_json({name => $name});
+    }
+}
+```
+
+An entry module can `import App::User;`, create a user with
+`App::User->new(name => "Alice")`, and call `$user->as_json()`.
+The class loads `JSON::PP` itself, without importing function names.
+Its runner does not need a separate JSON declaration.
+
+Keep each class's Perl dependencies local. For non-core modules,
+install them in the Perl environment used for both `veyra check`
+and `veyra run`. The declaration does not install anything. For a
+shared resource such as a DBI connection, open it at startup and
+pass the handle to the classes that need it.
+
 ## Command-line exit status
 
 ### Project CLI

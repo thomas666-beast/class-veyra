@@ -635,6 +635,61 @@ App :: Greeter
 
 Imports do not create short-name aliases.
 
+### Use Perl or CPAN modules from a class
+
+Declare each Perl dependency in the class that needs it. This
+`src/App/User.veyra` encodes a user without any JSON setup in `run.pl`:
+
+```text
+class App::User {
+    use JSON::PP ();
+
+    field $name :param;
+
+    fun as_json {
+        return JSON::PP::encode_json({name => $name});
+    }
+}
+```
+
+To try it in a starter project, replace `src/App/Main.veyra` with:
+
+```text
+import App::User;
+
+class App::Main {
+    fun message {
+        my $user = App::User->new(name => "Alice");
+        return $user->as_json();
+    }
+}
+```
+
+Keep the generated `run.pl` and run `veyra run`. It prints
+`{"name":"Alice"}`.
+
+`import App::User;` resolves Veyra source. `use JSON::PP ();` emits a
+Perl module declaration that loads the module without importing
+functions. Use qualified names such as `JSON::PP::encode_json(...)`
+or class calls such as `JSON::PP->new()`. Veyra does not validate
+external function or method signatures.
+
+Different classes can declare the same dependency. Perl normally
+loads it once per interpreter. Declare it at most once per class;
+import lists and version constraints are not supported.
+
+Install non-core dependencies, such as `DBI` and its database driver,
+into the Perl environment that builds and runs the project. A module
+declaration does not install the module or create a connection.
+Create shared connections at startup and pass the handles to the
+classes that need them.
+
+`veyra check` and `veyra build` syntax-check generated Perl, which
+loads these dependencies and can execute their compile-time code.
+`veyra fmt` does not load them, and `veyra-compile` only generates
+Perl. A generated bundle still needs its declared Perl modules when
+loaded, but it does not need Class::Veyra itself.
+
 ## Low-level compiler CLI
 
 The original `veyra-compile` interface remains available independently of

@@ -260,7 +260,7 @@ like(
 
 like(
     $checked->{stdout},
-    qr/^@@ -\d+,\d+ \+\d+,\d+ @@$/m,
+    qr/^\@\@ -\d+,\d+ \+\d+,\d+ \@\@$/m,
     'format check prints a diff hunk',
 );
 

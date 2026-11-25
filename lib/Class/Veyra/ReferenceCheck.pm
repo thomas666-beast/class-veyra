@@ -16,6 +16,9 @@ sub validate {
         @{ $document->{interfaces} };
 
     for my $class_node (@{ $document->{classes} }) {
+        my %perl_modules = map { $_->{name} => 1 }
+            grep { $_->{kind} eq 'use' } @{ $class_node->{members} };
+
         for my $member (@{ $class_node->{members} }) {
             next unless $member->{kind} eq 'fun'
                 || $member->{kind} eq 'act';
@@ -25,6 +28,7 @@ sub validate {
                     $member->{body},
                     \%classes,
                     \%interfaces,
+                    \%perl_modules,
                 );
                 1;
             };
@@ -46,7 +50,9 @@ sub validate {
 }
 
 sub check_body {
-    my ($class, $source, $classes, $interfaces) = @_;
+    my ($class, $source, $classes, $interfaces, $perl_modules) = @_;
+
+    $perl_modules //= {};
 
     my $tokens = Class::Veyra::Tokenizer->tokenize($source);
 
@@ -83,7 +89,7 @@ sub check_body {
                 . "at body line $line\n";
         }
 
-        next if $classes->{$name};
+        next if $classes->{$name} || $perl_modules->{$name};
 
         my $message = "Unknown class '$name' at body line $line.";
 

@@ -7,6 +7,7 @@ use warnings;
 use Class::Veyra::Tokenizer;
 use Class::Veyra::FieldParser;
 use Class::Veyra::OperationParser;
+use Class::Veyra::QualifiedName;
 
 sub parse {
     my ($class, $source) = @_;
@@ -16,6 +17,7 @@ sub parse {
     my @members;
     my %fields;
     my %operations;
+    my %perl_modules;
 
     my $i = 0;
 
@@ -32,10 +34,22 @@ sub parse {
 
         unless (
             $token->{type} eq 'identifier'
-            && $token->{text} =~ /\A(?:field|fun|act)\z/
+            && $token->{text} =~ /\A(?:use|field|fun|act)\z/
         ) {
             die "Unexpected '$token->{text}' at offset "
-                . "$token->{offset}; expected field, fun, or act\n";
+                . "$token->{offset}; expected use, field, fun, or act\n";
+        }
+
+        if ($token->{text} eq 'use') {
+            my ($node, $next) = _parse_use($tokens, $i);
+
+            die "Duplicate Perl module declaration '$node->{name}' "
+                . "at offset $node->{offset}\n"
+                if $perl_modules{ $node->{name} }++;
+
+            push @members, $node;
+            $i = $next;
+            next;
         }
 
         my $end = $#$tokens;
@@ -120,6 +134,43 @@ sub parse {
     }
 
     return \@members;
+}
+
+sub _parse_use {
+    my ($tokens, $index) = @_;
+
+    my $offset = $tokens->[$index]{offset};
+    my $expected = "Expected 'use Module::Name ();' at offset $offset";
+    my $module = eval {
+        Class::Veyra::QualifiedName->read($tokens, $index + 1);
+    };
+
+    die "$expected: $@" unless defined $module;
+    die "$expected\n" if $module->{name} =~ /\Av[0-9]+\z/;
+
+    $index = $module->{next_index};
+
+    for my $symbol ('(', ')', ';') {
+        while (
+            $index < @$tokens
+            && $tokens->[$index]{type} =~ /\A(?:whitespace|comment)\z/
+        ) {
+            ++$index;
+        }
+
+        my $token = $tokens->[$index];
+        die "$expected\n" unless $token
+            && $token->{type} eq 'symbol'
+            && $token->{text} eq $symbol;
+
+        ++$index;
+    }
+
+    return ({
+        kind   => 'use',
+        name   => $module->{name},
+        offset => $offset,
+    }, $index);
 }
 
 1;

@@ -1,0 +1,20 @@
+interface Named {
+    fun name;
+    act rename ($new_name);
+}
+
+class Person implements Named {
+    field $name :param;
+
+    fun name {
+        return $name;
+    }
+
+    fun greeting ($prefix) {
+        return "$prefix, $name";
+    }
+
+    act rename ($new_name) {
+        $name = $new_name;
+    }
+}

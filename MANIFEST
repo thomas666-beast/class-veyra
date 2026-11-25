@@ -1,16 +1,6 @@
+.gitignore
 docs/quickstart.md
-examples/import-demo/build/Employee.pm
-examples/import-demo/run.pl
-examples/import-demo/src/Demo/Contracts/Named.veyra
-examples/import-demo/src/Demo/Contracts/Person.veyra
-examples/import-demo/src/Demo/Employee.veyra
-examples/import-demo/src/Demo/Person.veyra
 examples/person.veyra
-hello/build/Main.pm
-hello/run.pl
-hello/src/App/Main.veyra
-hello/src/App/Models/User.veyra
-hello/veyra.json
 lib/Class/Veyra.pm
 lib/Class/Veyra/ArgumentCheck.pm
 lib/Class/Veyra/BodyParser.pm
@@ -34,12 +24,17 @@ lib/Class/Veyra/ProjectFormatter.pm
 lib/Class/Veyra/QualifiedName.pm
 lib/Class/Veyra/ReferenceCheck.pm
 lib/Class/Veyra/SourceCollector.pm
+lib/Class/Veyra/SourceDiff.pm
 lib/Class/Veyra/SourceLoader.pm
 lib/Class/Veyra/SyntaxGuard.pm
 lib/Class/Veyra/Tokenizer.pm
 Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
+organization/.gitignore
+organization/run.pl
+organization/src/App/Main.veyra
+organization/veyra.json
 README.md
 script/veyra
 script/veyra-compile
@@ -97,6 +92,13 @@ t/50-method-check-arguments.t
 t/51-constructor-check.t
 t/52-project-starter-workflow.t
 t/53-formatter.t
+t/54-project-format.t
 t/55-project-format-source-order.t
 t/56-project-format-safety.t
+t/57-cli-version.t
+t/58-source-diff.t
+t/59-perl-modules.t
+t/60-project-perl-modules.t
 xt/installed-cli.t
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

@@ -39,6 +39,11 @@ sub generate {
         push @output, "$declaration {\n";
 
         for my $member (@{ $node->{members} }) {
+            if ($member->{kind} eq 'use') {
+                push @output, "    use $member->{name} ();\n";
+                next;
+            }
+
             if ($member->{kind} eq 'field') {
                 my $field_declaration =
                     '    field $' . $member->{name};
